@@ -1,0 +1,51 @@
+services:
+  ipam-db:
+    image: mariadb:10.11
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${DB_NAME}
+      MARIADB_USER: ${DB_USER}
+      MARIADB_PASSWORD: ${DB_PASS}
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./schema.sql:/docker-entrypoint-initdb.d/10-pdns.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin ping -h 127.0.0.1 -uroot -p\"$DB_ROOT_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 50
+      start_period: 60s
+    networks: [ipam]
+
+  pdns-auth:
+    image: miaj/pdns-auth:latest
+    depends_on:
+      ipam-db:
+        condition: service_healthy
+    environment:
+      PDNS_API: "yes"
+      PDNS_API_KEY: ${PDNS_API_KEY}
+      PDNS_WS: "yes"
+      PDNS_WS_ADDR: "0.0.0.0"
+      PDNS_WS_PORT: "8081"
+      PDNS_WS_ALLOW_FROM: "127.0.0.1,::1,172.18.0.0/16"
+
+      MYSQL_AUTOCONF: "true"
+      MYSQL_HOST: ipam-db
+      MYSQL_PORT: "3306"
+      MYSQL_DB: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASS: ${DB_PASS}
+    ports:
+      - "1053:53/tcp"
+      - "1053:53/udp"
+      - "8081:8081/tcp"
+    command: ["--loglevel=4"]
+    networks: [ipam]
+
+volumes:
+  db_data: {}
+
+networks:
+  ipam:
+    driver: bridge
